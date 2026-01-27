@@ -81,6 +81,7 @@ export default function Home() {
     setCategorias(data || [])
   }, [])
 
+  //Função para buscar movimentos na base de dados
   const fetchMovimentos = useCallback(async () => {
     const [year, month] = selectedMonth.split('-').map(Number)
     const startDate = format(startOfMonth(new Date(year, month - 1)), 'yyyy-MM-dd')
@@ -123,6 +124,7 @@ export default function Home() {
     localStorage.setItem('theme', newIsDark ? 'dark' : 'light')
   }
 
+  // Função que adiciona movimentos a base de dados
   async function addMovimento() {
     if (!newMovimento.valor) return
     await supabase.from('movimentos').insert({
@@ -137,11 +139,13 @@ export default function Home() {
     fetchMovimentos()
   }
 
+  // Função que elimina movimentos a base de dados
   async function deleteMovimento(id: string) {
     await supabase.from('movimentos').delete().eq('id', id)
     fetchMovimentos()
   }
 
+  // Adicionar categorias
   async function addCategoria() {
     if (!newCategoria.nome) return
     await supabase.from('categorias').insert(newCategoria)
@@ -149,11 +153,13 @@ export default function Home() {
     fetchCategorias()
   }
 
+  // Eliminar categoria
   async function deleteCategoria(id: string) {
     await supabase.from('categorias').delete().eq('id', id)
     fetchCategorias()
   }
 
+  // Exportar para excel
   function exportToExcel() {
     const data = movimentos.map(m => ({
       'Data': format(new Date(m.data), 'dd/MM/yyyy'),
@@ -162,6 +168,7 @@ export default function Home() {
       'Descrição': m.descricao || '-',
       'Valor': m.valor
     }))
+    
     const receitas = movimentos.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
     const gastos = movimentos.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
     data.push({} as typeof data[0])

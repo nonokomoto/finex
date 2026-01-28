@@ -127,13 +127,26 @@ export default function Home() {
   // Função que adiciona movimentos a base de dados
   async function addMovimento() {
     if (!newMovimento.valor) return
-    await supabase.from('movimentos').insert({
+    
+    const valorNumerico = parseFloat(newMovimento.valor)
+    if (isNaN(valorNumerico)) {
+      alert('Valor inválido')
+      return
+    }
+    
+    const { error } = await supabase.from('movimentos').insert({
       categoria_id: newMovimento.categoria_id || null,
       tipo: newMovimento.tipo,
-      valor: parseFloat(newMovimento.valor),
+      valor: valorNumerico,
       descricao: newMovimento.descricao || null,
       data: newMovimento.data
     })
+    
+    if (error) {
+      alert('Erro ao guardar movimento: ' + error.message)
+      return
+    }
+    
     setNewMovimento({ categoria_id: '', tipo: 'gasto', valor: '', descricao: '', data: format(new Date(), 'yyyy-MM-dd') })
     setIsAddingMovimento(false)
     fetchMovimentos()
@@ -141,21 +154,33 @@ export default function Home() {
 
   // Função que elimina movimentos a base de dados
   async function deleteMovimento(id: string) {
-    await supabase.from('movimentos').delete().eq('id', id)
+    const { error } = await supabase.from('movimentos').delete().eq('id', id)
+    if (error) {
+      alert('Erro ao eliminar movimento: ' + error.message)
+      return
+    }
     fetchMovimentos()
   }
 
   // Adicionar categorias
   async function addCategoria() {
     if (!newCategoria.nome) return
-    await supabase.from('categorias').insert(newCategoria)
+    const { error } = await supabase.from('categorias').insert(newCategoria)
+    if (error) {
+      alert('Erro ao adicionar categoria: ' + error.message)
+      return
+    }
     setNewCategoria({ nome: '', tipo: 'gasto' })
     fetchCategorias()
   }
 
   // Eliminar categoria
   async function deleteCategoria(id: string) {
-    await supabase.from('categorias').delete().eq('id', id)
+    const { error } = await supabase.from('categorias').delete().eq('id', id)
+    if (error) {
+      alert('Erro ao eliminar categoria: ' + error.message)
+      return
+    }
     fetchCategorias()
   }
 

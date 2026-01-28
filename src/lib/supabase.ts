@@ -21,7 +21,7 @@ export type Categoria = {
 
 export type Movimento = {
   id: string
-  salao_id: string
+  salao_id?: string | null
   categoria_id: string | null
   tipo: 'receita' | 'gasto'
   valor: number

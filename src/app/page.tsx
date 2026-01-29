@@ -67,6 +67,11 @@ export default function Home() {
     descricao: '',
     data: format(new Date(), 'yyyy-MM-dd')
   })
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
+  const [exportDateRange, setExportDateRange] = useState({
+    startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+    endDate: format(endOfMonth(new Date()), 'yyyy-MM-dd')
+  })
 
   useEffect(() => {
     setIsLoggedIn(isAuthenticated())
@@ -127,13 +132,13 @@ export default function Home() {
   // Função que adiciona movimentos a base de dados
   async function addMovimento() {
     if (!newMovimento.valor) return
-    
+
     const valorNumerico = parseFloat(newMovimento.valor)
     if (isNaN(valorNumerico)) {
       alert('Valor inválido')
       return
     }
-    
+
     const { error } = await supabase.from('movimentos').insert({
       categoria_id: newMovimento.categoria_id || null,
       tipo: newMovimento.tipo,
@@ -141,12 +146,12 @@ export default function Home() {
       descricao: newMovimento.descricao || null,
       data: newMovimento.data
     })
-    
+
     if (error) {
       alert('Erro ao guardar movimento: ' + error.message)
       return
     }
-    
+
     setNewMovimento({ categoria_id: '', tipo: 'gasto', valor: '', descricao: '', data: format(new Date(), 'yyyy-MM-dd') })
     setIsAddingMovimento(false)
     fetchMovimentos()
@@ -185,17 +190,29 @@ export default function Home() {
   }
 
   // Exportar para excel
-  function exportToExcel() {
-    const data = movimentos.map(m => ({
+  async function exportToExcel() {
+    const { data: exportData } = await supabase
+      .from('movimentos')
+      .select(`*, categoria:categorias(id, nome, tipo)`)
+      .gte('data', exportDateRange.startDate)
+      .lte('data', exportDateRange.endDate)
+      .order('data', { ascending: false })
+
+    if (!exportData || exportData.length === 0) {
+      alert('Sem movimentos neste período')
+      return
+    }
+
+    const data = exportData.map(m => ({
       'Data': format(new Date(m.data), 'dd/MM/yyyy'),
       'Tipo': m.tipo === 'receita' ? 'Receita' : 'Gasto',
       'Categoria': (m.categoria as Categoria)?.nome || '-',
       'Descrição': m.descricao || '-',
       'Valor': m.valor
     }))
-    
-    const receitas = movimentos.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
-    const gastos = movimentos.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
+
+    const receitas = exportData.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
+    const gastos = exportData.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
     data.push({} as typeof data[0])
     data.push({ 'Data': 'RESUMO', 'Tipo': '', 'Categoria': '', 'Descrição': '', 'Valor': 0 })
     data.push({ 'Data': 'Total Receitas', 'Tipo': '', 'Categoria': '', 'Descrição': '', 'Valor': receitas })
@@ -204,9 +221,10 @@ export default function Home() {
     const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Movimentos')
-    const [year, month] = selectedMonth.split('-')
-    const monthName = format(new Date(parseInt(year), parseInt(month) - 1), 'MMMM', { locale: pt })
-    XLSX.writeFile(wb, `financas_${monthName}_${year}.xlsx`)
+    const startFormatted = format(new Date(exportDateRange.startDate), 'dd-MM-yyyy')
+    const endFormatted = format(new Date(exportDateRange.endDate), 'dd-MM-yyyy')
+    XLSX.writeFile(wb, `financas_${startFormatted}_a_${endFormatted}.xlsx`)
+    setIsExportDialogOpen(false)
   }
 
   const totalReceitas = movimentos.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
@@ -214,8 +232,8 @@ export default function Home() {
   const saldo = totalReceitas - totalGastos
 
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
-    const date = new Date()
-    date.setMonth(date.getMonth() - i)
+    const now = new Date()
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
     return { value: format(date, 'yyyy-MM'), label: format(date, 'MMMM yyyy', { locale: pt }) }
   })
 
@@ -229,8 +247,8 @@ export default function Home() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="0" y="0" width="32" height="32" rx="8" fill="#6366f1"/>
-              <path d="M10 22V12M10 12H20M10 12L20 22" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+              <rect x="0" y="0" width="32" height="32" rx="8" fill="#6366f1" />
+              <path d="M10 22V12M10 12H20M10 12L20 22" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <h1 className="text-2xl font-bold">Fin<span className="text-primary">ex</span></h1>
           </div>
@@ -376,7 +394,38 @@ export default function Home() {
               </div>
             </DialogContent>
           </Dialog>
-          <Button variant="outline" onClick={exportToExcel}><Download className="h-4 w-4 mr-2" />Exportar Excel</Button>
+          <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline"><Download className="h-4 w-4 mr-2" />Exportar Excel</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Exportar Movimentos</DialogTitle></DialogHeader>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">Selecione o intervalo de datas para exportar:</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Data Início</Label>
+                    <Input
+                      type="date"
+                      value={exportDateRange.startDate}
+                      onChange={e => setExportDateRange({ ...exportDateRange, startDate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data Fim</Label>
+                    <Input
+                      type="date"
+                      value={exportDateRange.endDate}
+                      onChange={e => setExportDateRange({ ...exportDateRange, endDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <Button onClick={exportToExcel} className="w-full">
+                  <Download className="h-4 w-4 mr-2" />Exportar
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Movements Table */}

@@ -19,10 +19,36 @@ export type Categoria = {
   created_at: string
 }
 
+export type Operador = {
+  id: string
+  username: string
+  nome: string
+  cor: 'blue' | 'purple' | 'orange'
+  created_at: string
+}
+
+export type Produto = {
+  id: string
+  nome: string
+  codigo: string | null
+  descricao: string | null
+  preco_base: number
+  categoria_id: string | null
+  operador_id: string | null
+  tipo: 'receita' | 'gasto'
+  ativo: boolean
+  created_at: string
+  updated_at: string
+  // Joined fields
+  categoria?: Categoria
+}
+
 export type Movimento = {
   id: string
   salao_id?: string | null
   categoria_id: string | null
+  operador_id?: string | null
+  produto_id?: string | null
   tipo: 'receita' | 'gasto'
   valor: number
   descricao: string | null
@@ -31,4 +57,6 @@ export type Movimento = {
   // Joined fields
   salao?: Salao
   categoria?: Categoria
+  operador?: Operador
+  produto?: Produto
 }

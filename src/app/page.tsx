@@ -1,23 +1,26 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { supabase, Categoria, Movimento } from '@/lib/supabase'
-import { isAuthenticated, logout } from '@/lib/auth'
+import { useRouter } from 'next/navigation'
+import { supabase, Categoria, Movimento, Operador, Produto } from '@/lib/supabase'
+import { isAuthenticated, logout, getCurrentOperador, login } from '@/lib/auth'
 import { LoginForm } from '@/components/login-form'
+import { OperadorBadge, getOperadorBgLight, getOperadorColor, getOperadorColors } from '@/components/operador-badge'
+import { CategorySelect } from '@/components/category-select'
+import { ProductSelect } from '@/components/product-select'
+import { cn } from '@/lib/utils'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
-import { pt } from 'date-fns/locale'
+import { pt, fr } from 'date-fns/locale'
 import * as XLSX from 'xlsx'
+import { Locale, translations, excelTranslations, getStoredLocale, setStoredLocale } from '@/lib/i18n'
+import { AppHeader } from '@/components/app-header'
 import {
   Plus,
   Download,
   TrendingUp,
   TrendingDown,
   Wallet,
-  Trash2,
-  Settings,
-  Moon,
-  Sun,
-  LogOut
+  Trash2
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -47,22 +50,26 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export default function Home() {
+  const router = useRouter()
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
+  const [currentOperador, setCurrentOperador] = useState<Operador | null>(null)
+  const [operadores, setOperadores] = useState<Operador[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
+  const [produtos, setProdutos] = useState<Produto[]>([])
   const [movimentos, setMovimentos] = useState<Movimento[]>([])
   const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), 'yyyy-MM'))
   const [isAddingMovimento, setIsAddingMovimento] = useState(false)
-  const [isManagingCategorias, setIsManagingCategorias] = useState(false)
   const [isDark, setIsDark] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [newCategoria, setNewCategoria] = useState({ nome: '', tipo: 'gasto' as 'receita' | 'gasto' })
+  const [locale, setLocale] = useState<Locale>('pt')
+  const t = translations[locale]
   const [newMovimento, setNewMovimento] = useState({
     categoria_id: '',
-    tipo: 'gasto' as 'receita' | 'gasto',
+    produto_id: '',
+    tipo: 'receita' as 'receita' | 'gasto',
     valor: '',
     descricao: '',
     data: format(new Date(), 'yyyy-MM-dd')
@@ -73,9 +80,20 @@ export default function Home() {
     endDate: format(endOfMonth(new Date()), 'yyyy-MM-dd')
   })
 
+  // Cor do operador atual
+  const operadorColor = getOperadorColor(currentOperador?.cor)
+  const operadorColors = getOperadorColors(currentOperador?.cor)
+
   useEffect(() => {
     setIsLoggedIn(isAuthenticated())
+    setCurrentOperador(getCurrentOperador())
+    setLocale(getStoredLocale())
   }, [])
+
+  function handleLocaleChange(newLocale: Locale) {
+    setLocale(newLocale)
+    setStoredLocale(newLocale)
+  }
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains('dark'))
@@ -86,6 +104,20 @@ export default function Home() {
     setCategorias(data || [])
   }, [])
 
+  const fetchOperadores = useCallback(async () => {
+    const { data } = await supabase.from('operadores').select('*').order('nome')
+    setOperadores(data || [])
+  }, [])
+
+  const fetchProdutos = useCallback(async () => {
+    const { data } = await supabase
+      .from('produtos')
+      .select('*, categoria:categorias(id, nome, tipo)')
+      .eq('ativo', true)
+      .order('nome')
+    setProdutos(data || [])
+  }, [])
+
   //Função para buscar movimentos na base de dados
   const fetchMovimentos = useCallback(async () => {
     const [year, month] = selectedMonth.split('-').map(Number)
@@ -94,7 +126,7 @@ export default function Home() {
 
     const { data } = await supabase
       .from('movimentos')
-      .select(`*, categoria:categorias(id, nome, tipo)`)
+      .select(`*, categoria:categorias(id, nome, tipo), operador:operadores(id, nome, cor)`)
       .gte('data', startDate)
       .lte('data', endDate)
       .order('data', { ascending: false })
@@ -105,21 +137,37 @@ export default function Home() {
   useEffect(() => {
     if (isLoggedIn) {
       setIsLoading(true)
-      Promise.all([fetchCategorias(), fetchMovimentos()]).finally(() => setIsLoading(false))
+      Promise.all([fetchCategorias(), fetchMovimentos(), fetchOperadores(), fetchProdutos()]).finally(() => setIsLoading(false))
     }
-  }, [isLoggedIn, fetchCategorias, fetchMovimentos])
+  }, [isLoggedIn, fetchCategorias, fetchMovimentos, fetchOperadores, fetchProdutos])
 
   if (isLoggedIn === null) {
     return <div className="min-h-screen bg-background" />
   }
 
   if (!isLoggedIn) {
-    return <LoginForm onSuccess={() => setIsLoggedIn(true)} />
+    return <LoginForm
+      locale={locale}
+      onLocaleChange={handleLocaleChange}
+      onSuccess={() => {
+        setIsLoggedIn(true)
+        setCurrentOperador(getCurrentOperador())
+      }}
+    />
   }
 
   function handleLogout() {
     logout()
     setIsLoggedIn(false)
+    setCurrentOperador(null)
+  }
+
+  function handleOperadorChange(operadorId: string) {
+    const operador = operadores.find(o => o.id === operadorId)
+    if (operador) {
+      login(operador)
+      setCurrentOperador(operador)
+    }
   }
 
   function toggleDarkMode() {
@@ -135,24 +183,26 @@ export default function Home() {
 
     const valorNumerico = parseFloat(newMovimento.valor)
     if (isNaN(valorNumerico)) {
-      alert('Valor inválido')
+      alert(t.valorInvalido)
       return
     }
 
     const { error } = await supabase.from('movimentos').insert({
       categoria_id: newMovimento.categoria_id || null,
+      produto_id: newMovimento.produto_id || null,
       tipo: newMovimento.tipo,
       valor: valorNumerico,
       descricao: newMovimento.descricao || null,
-      data: newMovimento.data
+      data: newMovimento.data,
+      operador_id: currentOperador?.id || null
     })
 
     if (error) {
-      alert('Erro ao guardar movimento: ' + error.message)
+      alert(t.erroGuardarMovimento + ': ' + error.message)
       return
     }
 
-    setNewMovimento({ categoria_id: '', tipo: 'gasto', valor: '', descricao: '', data: format(new Date(), 'yyyy-MM-dd') })
+    setNewMovimento({ categoria_id: '', produto_id: '', tipo: 'receita', valor: '', descricao: '', data: format(new Date(), 'yyyy-MM-dd') })
     setIsAddingMovimento(false)
     fetchMovimentos()
   }
@@ -161,69 +211,50 @@ export default function Home() {
   async function deleteMovimento(id: string) {
     const { error } = await supabase.from('movimentos').delete().eq('id', id)
     if (error) {
-      alert('Erro ao eliminar movimento: ' + error.message)
+      alert(t.erroEliminarMovimento + ': ' + error.message)
       return
     }
     fetchMovimentos()
   }
 
-  // Adicionar categorias
-  async function addCategoria() {
-    if (!newCategoria.nome) return
-    const { error } = await supabase.from('categorias').insert(newCategoria)
-    if (error) {
-      alert('Erro ao adicionar categoria: ' + error.message)
-      return
-    }
-    setNewCategoria({ nome: '', tipo: 'gasto' })
-    fetchCategorias()
-  }
-
-  // Eliminar categoria
-  async function deleteCategoria(id: string) {
-    const { error } = await supabase.from('categorias').delete().eq('id', id)
-    if (error) {
-      alert('Erro ao eliminar categoria: ' + error.message)
-      return
-    }
-    fetchCategorias()
-  }
-
-  // Exportar para excel
+  // Exportar para excel (sempre em francês)
   async function exportToExcel() {
     const { data: exportData } = await supabase
       .from('movimentos')
-      .select(`*, categoria:categorias(id, nome, tipo)`)
+      .select(`*, categoria:categorias(id, nome, tipo), operador:operadores(id, nome, cor)`)
       .gte('data', exportDateRange.startDate)
       .lte('data', exportDateRange.endDate)
       .order('data', { ascending: false })
 
     if (!exportData || exportData.length === 0) {
-      alert('Sem movimentos neste período')
+      alert(t.semMovimentosPeriodo)
       return
     }
 
+    // Excel sempre em francês
+    const ex = excelTranslations
     const data = exportData.map(m => ({
-      'Data': format(new Date(m.data), 'dd/MM/yyyy'),
-      'Tipo': m.tipo === 'receita' ? 'Receita' : 'Gasto',
-      'Categoria': (m.categoria as Categoria)?.nome || '-',
-      'Descrição': m.descricao || '-',
-      'Valor': m.valor
+      [ex.data]: format(new Date(m.data), 'dd/MM/yyyy'),
+      [ex.tipo]: m.tipo === 'receita' ? ex.receita : ex.gasto,
+      [ex.categoria]: (m.categoria as Categoria)?.nome || '-',
+      [ex.operador]: (m.operador as Operador)?.nome || '-',
+      [ex.descricao]: m.descricao || '-',
+      [ex.valor]: m.valor
     }))
 
     const receitas = exportData.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
     const gastos = exportData.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
     data.push({} as typeof data[0])
-    data.push({ 'Data': 'RESUMO', 'Tipo': '', 'Categoria': '', 'Descrição': '', 'Valor': 0 })
-    data.push({ 'Data': 'Total Receitas', 'Tipo': '', 'Categoria': '', 'Descrição': '', 'Valor': receitas })
-    data.push({ 'Data': 'Total Gastos', 'Tipo': '', 'Categoria': '', 'Descrição': '', 'Valor': gastos })
-    data.push({ 'Data': 'Saldo', 'Tipo': '', 'Categoria': '', 'Descrição': '', 'Valor': receitas - gastos })
+    data.push({ [ex.data]: ex.resumo, [ex.tipo]: '', [ex.categoria]: '', [ex.operador]: '', [ex.descricao]: '', [ex.valor]: 0 })
+    data.push({ [ex.data]: ex.totalReceitas, [ex.tipo]: '', [ex.categoria]: '', [ex.operador]: '', [ex.descricao]: '', [ex.valor]: receitas })
+    data.push({ [ex.data]: ex.totalGastos, [ex.tipo]: '', [ex.categoria]: '', [ex.operador]: '', [ex.descricao]: '', [ex.valor]: gastos })
+    data.push({ [ex.data]: ex.saldo, [ex.tipo]: '', [ex.categoria]: '', [ex.operador]: '', [ex.descricao]: '', [ex.valor]: receitas - gastos })
     const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Movimentos')
+    XLSX.utils.book_append_sheet(wb, ws, 'Mouvements')
     const startFormatted = format(new Date(exportDateRange.startDate), 'dd-MM-yyyy')
     const endFormatted = format(new Date(exportDateRange.endDate), 'dd-MM-yyyy')
-    XLSX.writeFile(wb, `financas_${startFormatted}_a_${endFormatted}.xlsx`)
+    XLSX.writeFile(wb, `finances_${startFormatted}_a_${endFormatted}.xlsx`)
     setIsExportDialogOpen(false)
   }
 
@@ -231,79 +262,43 @@ export default function Home() {
   const totalGastos = movimentos.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
   const saldo = totalReceitas - totalGastos
 
+  const dateLocale = locale === 'pt' ? pt : fr
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
     const now = new Date()
     const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    return { value: format(date, 'yyyy-MM'), label: format(date, 'MMMM yyyy', { locale: pt }) }
+    return { value: format(date, 'yyyy-MM'), label: format(date, 'MMMM yyyy', { locale: dateLocale }) }
   })
 
-  const categoriasReceita = categorias.filter(c => c.tipo === 'receita')
-  const categoriasGasto = categorias.filter(c => c.tipo === 'gasto')
+  const produtosReceita = produtos.filter(p => p.tipo === 'receita')
+  const produtosGasto = produtos.filter(p => p.tipo === 'gasto')
+
+  function handleProdutoSelect(produtoId: string) {
+    const produto = produtos.find(p => p.id === produtoId)
+    if (produto) {
+      setNewMovimento({
+        ...newMovimento,
+        produto_id: produtoId,
+        valor: produto.preco_base.toString(),
+        categoria_id: produto.categoria_id || '',
+        descricao: produto.nome + (produto.descricao ? ` - ${produto.descricao}` : '')
+      })
+    }
+  }
 
   return (
     <main className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="0" y="0" width="32" height="32" rx="8" fill="#6366f1" />
-              <path d="M10 22V12M10 12H20M10 12L20 22" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <h1 className="text-2xl font-bold">Fin<span className="text-primary">ex</span></h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={toggleDarkMode}>
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-            <Dialog open={isManagingCategorias} onOpenChange={setIsManagingCategorias}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="icon"><Settings className="h-4 w-4" /></Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader><DialogTitle>Gerir Categorias</DialogTitle></DialogHeader>
-                <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <Input placeholder="Nome da categoria" value={newCategoria.nome} onChange={e => setNewCategoria({ ...newCategoria, nome: e.target.value })} />
-                    <Select value={newCategoria.tipo} onValueChange={(v: 'receita' | 'gasto') => setNewCategoria({ ...newCategoria, tipo: v })}>
-                      <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="receita">Receita</SelectItem>
-                        <SelectItem value="gasto">Gasto</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button onClick={addCategoria}><Plus className="h-4 w-4" /></Button>
-                  </div>
-                  <Tabs defaultValue="gastos">
-                    <TabsList className="w-full">
-                      <TabsTrigger value="gastos" className="flex-1">Gastos</TabsTrigger>
-                      <TabsTrigger value="receitas" className="flex-1">Receitas</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="gastos" className="space-y-2 mt-2">
-                      {categoriasGasto.map(cat => (
-                        <div key={cat.id} className="flex items-center justify-between p-2 bg-muted rounded">
-                          <span>{cat.nome}</span>
-                          <Button variant="ghost" size="icon" onClick={() => deleteCategoria(cat.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                        </div>
-                      ))}
-                      {categoriasGasto.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">Sem categorias de gasto</p>}
-                    </TabsContent>
-                    <TabsContent value="receitas" className="space-y-2 mt-2">
-                      {categoriasReceita.map(cat => (
-                        <div key={cat.id} className="flex items-center justify-between p-2 bg-muted rounded">
-                          <span>{cat.nome}</span>
-                          <Button variant="ghost" size="icon" onClick={() => deleteCategoria(cat.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                        </div>
-                      ))}
-                      {categoriasReceita.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">Sem categorias de receita</p>}
-                    </TabsContent>
-                  </Tabs>
-                </div>
-              </DialogContent>
-            </Dialog>
-            <Button variant="outline" size="icon" onClick={handleLogout} title="Sair"><LogOut className="h-4 w-4" /></Button>
-          </div>
-        </div>
+        <AppHeader
+          locale={locale}
+          onLocaleChange={handleLocaleChange}
+          isDark={isDark}
+          onToggleDark={toggleDarkMode}
+          currentOperador={currentOperador}
+          operadores={operadores}
+          onOperadorChange={handleOperadorChange}
+          currentPage="home"
+        />
 
         {/* Filter */}
         <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -317,7 +312,7 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Receitas</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">{t.receitas}</CardTitle>
               <TrendingUp className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
@@ -328,7 +323,7 @@ export default function Home() {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Gastos</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">{t.gastos}</CardTitle>
               <TrendingDown className="h-4 w-4 text-red-500" />
             </CardHeader>
             <CardContent>
@@ -339,8 +334,8 @@ export default function Home() {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Saldo</CardTitle>
-              <Wallet className="h-4 w-4 text-primary" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">{t.saldo}</CardTitle>
+              <Wallet className="h-4 w-4" style={{ color: operadorColor }} />
             </CardHeader>
             <CardContent>
               {isLoading ? <Skeleton className="h-8 w-32" /> : (
@@ -353,58 +348,99 @@ export default function Home() {
         {/* Actions */}
         <div className="flex gap-2">
           <Dialog open={isAddingMovimento} onOpenChange={setIsAddingMovimento}>
-            <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" />Adicionar Movimento</Button></DialogTrigger>
+            <DialogTrigger asChild>
+              <Button style={{ backgroundColor: operadorColor }}>
+                <Plus className="h-4 w-4 mr-2" />{t.addMovimento}
+              </Button>
+            </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Novo Movimento</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t.novoMovimento}</DialogTitle></DialogHeader>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Tipo</Label>
-                    <Select value={newMovimento.tipo} onValueChange={(v: 'receita' | 'gasto') => setNewMovimento({ ...newMovimento, tipo: v, categoria_id: '' })}>
+                    <Label>{t.tipo}</Label>
+                    <Select value={newMovimento.tipo} onValueChange={(v: 'receita' | 'gasto') => setNewMovimento({ ...newMovimento, tipo: v, categoria_id: '', produto_id: '' })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="receita">Receita</SelectItem>
-                        <SelectItem value="gasto">Gasto</SelectItem>
+                        <SelectItem value="receita">{t.receita}</SelectItem>
+                        <SelectItem value="gasto">{t.gasto}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Data</Label>
+                    <Label>{t.data}</Label>
                     <Input type="date" value={newMovimento.data} onChange={e => setNewMovimento({ ...newMovimento, data: e.target.value })} />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Categoria</Label>
-                  <Select value={newMovimento.categoria_id} onValueChange={v => setNewMovimento({ ...newMovimento, categoria_id: v })}>
-                    <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
-                    <SelectContent>
-                      {(newMovimento.tipo === 'receita' ? categoriasReceita : categoriasGasto).map(cat => (<SelectItem key={cat.id} value={cat.id}>{cat.nome}</SelectItem>))}
-                    </SelectContent>
-                  </Select>
+                  <Label>{t.produtoServicoCatalogo}</Label>
+                  <ProductSelect
+                    value={newMovimento.produto_id}
+                    onValueChange={(prodId: string, preco?: number) => {
+                      if (!prodId) {
+                        setNewMovimento({ ...newMovimento, produto_id: '' })
+                        return
+                      }
+                      const produto = produtos.find(p => p.id === prodId)
+                      if (produto) {
+                        // Produto existente do catálogo - preenche tudo
+                        handleProdutoSelect(prodId)
+                      } else if (preco) {
+                        // Produto criado inline - preenche ID e preço
+                        setNewMovimento({
+                          ...newMovimento,
+                          produto_id: prodId,
+                          valor: preco.toString()
+                        })
+                      } else {
+                        setNewMovimento({ ...newMovimento, produto_id: prodId })
+                      }
+                    }}
+                    tipo={newMovimento.tipo}
+                    produtos={produtos}
+                    onProductCreated={fetchProdutos}
+                    operadorColor={operadorColor}
+                    locale={locale}
+                    defaultPrice={newMovimento.valor}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>Valor (EUR)</Label>
+                  <Label>{t.categoria}</Label>
+                  <CategorySelect
+                    value={newMovimento.categoria_id}
+                    onValueChange={v => setNewMovimento({ ...newMovimento, categoria_id: v === 'none' ? '' : v })}
+                    tipo={newMovimento.tipo}
+                    categorias={categorias}
+                    onCategoryCreated={fetchCategorias}
+                    operadorColor={operadorColor}
+                    locale={locale}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t.valorEur}</Label>
                   <Input type="number" step="0.01" min="0" placeholder="0.00" value={newMovimento.valor} onChange={e => setNewMovimento({ ...newMovimento, valor: e.target.value })} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Descricao</Label>
-                  <Input placeholder="Opcional" value={newMovimento.descricao} onChange={e => setNewMovimento({ ...newMovimento, descricao: e.target.value })} />
+                  <Label>{t.descricao}</Label>
+                  <Input placeholder={t.opcional} value={newMovimento.descricao} onChange={e => setNewMovimento({ ...newMovimento, descricao: e.target.value })} />
                 </div>
-                <Button onClick={addMovimento} className="w-full">Guardar</Button>
+                <Button onClick={addMovimento} className="w-full" style={{ backgroundColor: operadorColor }}>{t.guardar}</Button>
               </div>
             </DialogContent>
           </Dialog>
           <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline"><Download className="h-4 w-4 mr-2" />Exportar Excel</Button>
+              <Button variant="outline">
+                <Download className="h-4 w-4 mr-2" />{t.exportarExcel}
+              </Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Exportar Movimentos</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t.exportarMovimentos}</DialogTitle></DialogHeader>
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">Selecione o intervalo de datas para exportar:</p>
+                <p className="text-sm text-muted-foreground">{t.selecionarIntervalo}</p>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Data Início</Label>
+                    <Label>{t.dataInicio}</Label>
                     <Input
                       type="date"
                       value={exportDateRange.startDate}
@@ -412,7 +448,7 @@ export default function Home() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Data Fim</Label>
+                    <Label>{t.dataFim}</Label>
                     <Input
                       type="date"
                       value={exportDateRange.endDate}
@@ -420,8 +456,8 @@ export default function Home() {
                     />
                   </div>
                 </div>
-                <Button onClick={exportToExcel} className="w-full">
-                  <Download className="h-4 w-4 mr-2" />Exportar
+                <Button onClick={exportToExcel} className="w-full" style={{ backgroundColor: operadorColor }}>
+                  <Download className="h-4 w-4 mr-2" />{t.exportar}
                 </Button>
               </div>
             </DialogContent>
@@ -430,7 +466,7 @@ export default function Home() {
 
         {/* Movements Table */}
         <Card>
-          <CardHeader><CardTitle>Movimentos</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{t.movimentos}</CardTitle></CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="space-y-3">
@@ -445,16 +481,17 @@ export default function Home() {
                 ))}
               </div>
             ) : movimentos.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">Sem movimentos neste periodo</p>
+              <p className="text-center text-muted-foreground py-8">{t.semMovimentos}</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Categoria</TableHead>
-                    <TableHead>Descricao</TableHead>
-                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead>{t.data}</TableHead>
+                    <TableHead>{t.tipo}</TableHead>
+                    <TableHead>{t.categoria}</TableHead>
+                    <TableHead>{t.operador}</TableHead>
+                    <TableHead>{t.descricao}</TableHead>
+                    <TableHead className="text-right">{t.valor}</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -462,8 +499,9 @@ export default function Home() {
                   {movimentos.map(mov => (
                     <TableRow key={mov.id}>
                       <TableCell>{format(new Date(mov.data), 'dd/MM/yyyy')}</TableCell>
-                      <TableCell><Badge variant={mov.tipo === 'receita' ? 'default' : 'destructive'}>{mov.tipo === 'receita' ? 'Receita' : 'Gasto'}</Badge></TableCell>
+                      <TableCell><Badge variant={mov.tipo === 'receita' ? 'default' : 'destructive'}>{mov.tipo === 'receita' ? t.receita : t.gasto}</Badge></TableCell>
                       <TableCell>{(mov.categoria as Categoria)?.nome || '-'}</TableCell>
+                      <TableCell><OperadorBadge operador={mov.operador as Operador} size="sm" /></TableCell>
                       <TableCell>{mov.descricao || '-'}</TableCell>
                       <TableCell className={`text-right font-medium ${mov.tipo === 'receita' ? 'text-green-500' : 'text-red-500'}`}>{mov.valor.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</TableCell>
                       <TableCell><Button variant="ghost" size="icon" onClick={() => deleteMovimento(mov.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>

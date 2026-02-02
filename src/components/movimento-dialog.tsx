@@ -4,7 +4,6 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { Search, TrendingUp, TrendingDown, Plus, Check, Loader2 } from 'lucide-react'
 import { supabase, Produto, Categoria } from '@/lib/supabase'
 import { Locale, translations } from '@/lib/i18n'
-import { getOperadorColor } from '@/components/operador-badge'
 
 import {
     Dialog,
@@ -23,7 +22,7 @@ interface MovimentoDialogProps {
     onOpenChange: (open: boolean) => void
     produtos: Produto[]
     operadorId: string
-    operadorCor?: string
+    operadorCor?: 'blue' | 'purple' | 'orange' | null
     locale: Locale
     onMovimentoCreated?: (produto: Produto, tipo: 'receita' | 'gasto', preco: number) => void
     onProdutoCreated?: () => void
@@ -54,7 +53,6 @@ export function MovimentoDialog({
     const searchInputRef = useRef<HTMLInputElement>(null)
     const listRef = useRef<HTMLDivElement>(null)
     const t = translations[locale]
-    const operadorColor = getOperadorColor(operadorCor)
 
     // Filtrar produtos pelo tipo e pesquisa (todos os resultados)
     const allFilteredProducts = useMemo(() => {
@@ -396,9 +394,9 @@ export function MovimentoDialog({
                                 <div className="flex items-start justify-between">
                                     <div>
                                         <span className="font-semibold text-foreground text-lg">
-                                            {selectedProduto.nome}
+                                            {selectedProduto?.nome}
                                         </span>
-                                        {selectedProduto.categoria && (
+                                        {selectedProduto?.categoria && (
                                             <p className="text-sm text-muted-foreground mt-1">
                                                 {(selectedProduto.categoria as Categoria).nome}
                                             </p>
@@ -429,7 +427,7 @@ export function MovimentoDialog({
                                         className="h-16 pl-12 text-3xl font-semibold"
                                     />
                                 </div>
-                                {parseFloat(precoAjustado) !== selectedProduto.preco_base && (
+                                {selectedProduto && parseFloat(precoAjustado) !== selectedProduto.preco_base && (
                                     <p className="text-sm text-muted-foreground">
                                         {locale === 'pt' ? 'Preço original:' : 'Prix original:'} {selectedProduto.preco_base.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}
                                     </p>

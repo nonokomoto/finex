@@ -1,11 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase, Categoria, Movimento, Operador, Produto } from '@/lib/supabase'
-import { isAuthenticated, logout, getCurrentOperador, login } from '@/lib/auth'
+import { isAuthenticated, getCurrentOperador, login } from '@/lib/auth'
 import { LoginForm } from '@/components/login-form'
-import { OperadorBadge, getOperadorBgLight, getOperadorColor, getOperadorColors } from '@/components/operador-badge'
+import { OperadorBadge, getOperadorColor } from '@/components/operador-badge'
 import { MovimentoDialog } from '@/components/movimento-dialog'
 import { cn } from '@/lib/utils'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
@@ -52,7 +51,6 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export default function Home() {
-  const router = useRouter()
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
   const [currentOperador, setCurrentOperador] = useState<Operador | null>(null)
   const [operadores, setOperadores] = useState<Operador[]>([])
@@ -79,7 +77,6 @@ export default function Home() {
 
   // Cor do operador atual
   const operadorColor = getOperadorColor(currentOperador?.cor)
-  const operadorColors = getOperadorColors(currentOperador?.cor)
 
   useEffect(() => {
     setIsLoggedIn(isAuthenticated())
@@ -181,12 +178,6 @@ export default function Home() {
         setCurrentOperador(getCurrentOperador())
       }}
     />
-  }
-
-  function handleLogout() {
-    logout()
-    setIsLoggedIn(false)
-    setCurrentOperador(null)
   }
 
   function handleOperadorChange(operadorId: string) {

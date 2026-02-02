@@ -67,14 +67,14 @@ export function AppHeader({
                 {currentPage === 'home' && currentOperador && operadores.length > 0 && onOperadorChange && (
                     <Select value={currentOperador.id} onValueChange={onOperadorChange}>
                         <SelectTrigger
-                            className="w-auto gap-2 border-0 hidden sm:flex"
+                            className="w-auto gap-1.5 sm:gap-2 border-0 px-2 sm:px-3 h-8 sm:h-9"
                             style={{ backgroundColor: operadorColors.bgLight }}
                         >
                             <span
-                                className="h-3 w-3 rounded-full shrink-0"
+                                className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full shrink-0"
                                 style={{ backgroundColor: operadorColor }}
                             />
-                            <SelectValue>
+                            <SelectValue className="text-sm">
                                 {currentOperador.nome}
                             </SelectValue>
                         </SelectTrigger>

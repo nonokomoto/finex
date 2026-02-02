@@ -86,6 +86,14 @@ export const translations = {
     valorInvalido: 'Valor inválido',
     erroGuardarMovimento: 'Erro ao guardar movimento',
     erroEliminarMovimento: 'Erro ao eliminar movimento',
+
+    // Filtros
+    todos: 'Todos',
+    filtrarPorTipo: 'Filtrar por tipo',
+    filtrarPorOperador: 'Filtrar por operador',
+    intervaloPersonalizado: 'Intervalo personalizado',
+    de: 'De',
+    ate: 'Até',
   },
   fr: {
     // Header
@@ -172,6 +180,14 @@ export const translations = {
     valorInvalido: 'Valeur invalide',
     erroGuardarMovimento: 'Erreur lors de l\'enregistrement du mouvement',
     erroEliminarMovimento: 'Erreur lors de la suppression du mouvement',
+
+    // Filtros
+    todos: 'Tous',
+    filtrarPorTipo: 'Filtrer par type',
+    filtrarPorOperador: 'Filtrer par opérateur',
+    intervaloPersonalizado: 'Période personnalisée',
+    de: 'Du',
+    ate: 'Au',
   }
 } as const
 

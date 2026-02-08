@@ -99,6 +99,7 @@ export const translations = {
     mes: 'Mês',
     totalMes: 'Total mês',
     dia: 'Dia',
+    verMais: 'Ver mais',
   },
   fr: {
     // Header
@@ -198,6 +199,7 @@ export const translations = {
     mes: 'Mois',
     totalMes: 'Total mois',
     dia: 'Jour',
+    verMais: 'Voir plus',
   }
 } as const
 

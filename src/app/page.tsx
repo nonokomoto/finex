@@ -75,6 +75,8 @@ export default function Home() {
   })
   const [filterTipo, setFilterTipo] = useState<'todos' | 'receita' | 'gasto'>('todos')
   const [filterOperador, setFilterOperador] = useState<string>('todos')
+  const [filterPeriodo, setFilterPeriodo] = useState<'mes' | 'dia'>('mes')
+  const [visibleCount, setVisibleCount] = useState(20)
 
   // Cor do operador atual
   const operadorColor = getOperadorColor(currentOperador?.cor)
@@ -146,8 +148,8 @@ export default function Home() {
     }
   }, [isLoggedIn, fetchCategorias, fetchMovimentos, fetchOperadores, fetchProdutos])
 
-  // Filtrar movimentos (deve estar antes dos returns condicionais)
-  const movimentosFiltrados = useMemo(() => {
+  // Base: filtrar por tipo e operador (para totais mensais e diários)
+  const movimentosBase = useMemo(() => {
     return movimentos.filter(m => {
       if (filterTipo !== 'todos' && m.tipo !== filterTipo) return false
       if (filterOperador !== 'todos' && (m.operador as Operador)?.id !== filterOperador) return false
@@ -155,11 +157,26 @@ export default function Home() {
     })
   }, [movimentos, filterTipo, filterOperador])
 
-  const totalReceitas = movimentosFiltrados.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
-  const totalGastos = movimentosFiltrados.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
+  // Tabela: adicionalmente filtrar por período
+  const movimentosFiltrados = useMemo(() => {
+    if (filterPeriodo === 'dia') return movimentosBase.filter(m => m.data === selectedDay)
+    return movimentosBase
+  }, [movimentosBase, filterPeriodo, selectedDay])
+
+  // Reset visible count when filters change
+  useEffect(() => {
+    setVisibleCount(20)
+  }, [movimentosFiltrados])
+
+  const movimentosVisiveis = movimentosFiltrados.slice(0, visibleCount)
+
+  // Totais mensais (sempre do mês inteiro, sem filtro de período)
+  const totalReceitas = movimentosBase.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
+  const totalGastos = movimentosBase.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
   const saldo = totalReceitas - totalGastos
 
-  const movimentosDia = useMemo(() => movimentosFiltrados.filter(m => m.data === selectedDay), [movimentosFiltrados, selectedDay])
+  // Totais diários (sempre do dia selecionado, sem filtro de período)
+  const movimentosDia = useMemo(() => movimentosBase.filter(m => m.data === selectedDay), [movimentosBase, selectedDay])
   const receitasDia = movimentosDia.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
   const gastosDia = movimentosDia.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
   const saldoDia = receitasDia - gastosDia
@@ -565,6 +582,22 @@ export default function Home() {
             <CardTitle>{t.movimentos}</CardTitle>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
               <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.data}:</Label>
+                <Select value={filterPeriodo} onValueChange={(v) => setFilterPeriodo(v as 'mes' | 'dia')}>
+                  <SelectTrigger
+                    className="flex-1 sm:w-28 h-8 text-sm"
+                    style={filterPeriodo === 'dia' ? { borderColor: operadorColor } : undefined}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mes">{t.mes}</SelectItem>
+                    <SelectItem value="dia">{t.dia}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.tipo}:</Label>
                 <Select value={filterTipo} onValueChange={(v) => setFilterTipo(v as 'todos' | 'receita' | 'gasto')}>
                   <SelectTrigger
@@ -619,7 +652,7 @@ export default function Home() {
               <>
                 {/* Mobile: Cards */}
                 <div className="space-y-3 md:hidden">
-                  {movimentosFiltrados.map(mov => (
+                  {movimentosVisiveis.map(mov => (
                     <div key={mov.id} className="p-4 rounded-lg border border-border bg-card">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
@@ -664,7 +697,7 @@ export default function Home() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {movimentosFiltrados.map(mov => (
+                      {movimentosVisiveis.map(mov => (
                         <TableRow key={mov.id}>
                           <TableCell className="whitespace-nowrap">{format(new Date(mov.data), 'dd/MM/yyyy')}</TableCell>
                           <TableCell><Badge variant={mov.tipo === 'receita' ? 'default' : 'destructive'}>{mov.tipo === 'receita' ? t.receita : t.gasto}</Badge></TableCell>
@@ -678,6 +711,15 @@ export default function Home() {
                     </TableBody>
                   </Table>
                 </div>
+
+                {/* Ver mais */}
+                {visibleCount < movimentosFiltrados.length && (
+                  <div className="flex justify-center pt-4">
+                    <Button variant="outline" onClick={() => setVisibleCount(prev => prev + 20)}>
+                      {t.verMais} ({movimentosFiltrados.length - visibleCount})
+                    </Button>
+                  </div>
+                )}
               </>
             )}
           </CardContent>

@@ -166,20 +166,24 @@ export default function Home() {
   // Reset visible count when filters change
   useEffect(() => {
     setVisibleCount(20)
-  }, [movimentosFiltrados])
+  }, [movimentosBase, filterPeriodo, selectedDay])
 
   const movimentosVisiveis = movimentosFiltrados.slice(0, visibleCount)
 
   // Totais mensais (sempre do mês inteiro, sem filtro de período)
-  const totalReceitas = movimentosBase.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
-  const totalGastos = movimentosBase.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
-  const saldo = totalReceitas - totalGastos
+  const { totalReceitas, totalGastos, saldo } = useMemo(() => {
+    const receitas = movimentosBase.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
+    const gastos = movimentosBase.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
+    return { totalReceitas: receitas, totalGastos: gastos, saldo: receitas - gastos }
+  }, [movimentosBase])
 
   // Totais diários (sempre do dia selecionado, sem filtro de período)
-  const movimentosDia = useMemo(() => movimentosBase.filter(m => m.data === selectedDay), [movimentosBase, selectedDay])
-  const receitasDia = movimentosDia.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
-  const gastosDia = movimentosDia.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
-  const saldoDia = receitasDia - gastosDia
+  const { receitasDia, gastosDia, saldoDia } = useMemo(() => {
+    const diaMovs = movimentosBase.filter(m => m.data === selectedDay)
+    const receitas = diaMovs.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
+    const gastos = diaMovs.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
+    return { receitasDia: receitas, gastosDia: gastos, saldoDia: receitas - gastos }
+  }, [movimentosBase, selectedDay])
 
   const dateLocale = locale === 'pt' ? pt : fr
   const monthOptions = Array.from({ length: 12 }, (_, i) => {

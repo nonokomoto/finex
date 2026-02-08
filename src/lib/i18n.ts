@@ -94,6 +94,11 @@ export const translations = {
     intervaloPersonalizado: 'Intervalo personalizado',
     de: 'De',
     ate: 'Até',
+
+    // Dashboard diário
+    mes: 'Mês',
+    totalMes: 'Total mês',
+    dia: 'Dia',
   },
   fr: {
     // Header
@@ -188,6 +193,11 @@ export const translations = {
     intervaloPersonalizado: 'Période personnalisée',
     de: 'Du',
     ate: 'Au',
+
+    // Dashboard diário
+    mes: 'Mois',
+    totalMes: 'Total mois',
+    dia: 'Jour',
   }
 } as const
 

@@ -2,16 +2,16 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase, Categoria, Movimento, Operador, Produto } from '@/lib/supabase'
-import { isAuthenticated, getCurrentOperador, login } from '@/lib/auth'
+import { isAuthenticated, getCurrentOperador, login, logout } from '@/lib/auth'
 import { LoginForm } from '@/components/login-form'
 import { OperadorBadge, getOperadorColor } from '@/components/operador-badge'
 import { MovimentoDialog } from '@/components/movimento-dialog'
-import { cn } from '@/lib/utils'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import { pt, fr } from 'date-fns/locale'
 import ExcelJS from 'exceljs'
 import { Locale, translations, excelTranslations, getStoredLocale, setStoredLocale } from '@/lib/i18n'
 import { AppHeader } from '@/components/app-header'
+import { DateInput } from '@/components/date-input'
 import {
   Plus,
   Download,
@@ -58,6 +58,11 @@ export default function Home() {
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [movimentos, setMovimentos] = useState<Movimento[]>([])
   const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), 'yyyy-MM'))
+  const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
+  const [customDateRange, setCustomDateRange] = useState({
+    startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
+    endDate: format(endOfMonth(new Date()), 'yyyy-MM-dd')
+  })
   const [isAddingMovimento, setIsAddingMovimento] = useState(false)
   const [isDark, setIsDark] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -70,10 +75,6 @@ export default function Home() {
   })
   const [filterTipo, setFilterTipo] = useState<'todos' | 'receita' | 'gasto'>('todos')
   const [filterOperador, setFilterOperador] = useState<string>('todos')
-  const [customDateRange, setCustomDateRange] = useState({
-    startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
-    endDate: format(endOfMonth(new Date()), 'yyyy-MM-dd')
-  })
 
   // Cor do operador atual
   const operadorColor = getOperadorColor(currentOperador?.cor)
@@ -154,9 +155,14 @@ export default function Home() {
     })
   }, [movimentos, filterTipo, filterOperador])
 
-  const totalReceitas = movimentos.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
-  const totalGastos = movimentos.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
+  const totalReceitas = movimentosFiltrados.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
+  const totalGastos = movimentosFiltrados.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
   const saldo = totalReceitas - totalGastos
+
+  const movimentosDia = useMemo(() => movimentosFiltrados.filter(m => m.data === selectedDay), [movimentosFiltrados, selectedDay])
+  const receitasDia = movimentosDia.filter(m => m.tipo === 'receita').reduce((sum, m) => sum + m.valor, 0)
+  const gastosDia = movimentosDia.filter(m => m.tipo === 'gasto').reduce((sum, m) => sum + m.valor, 0)
+  const saldoDia = receitasDia - gastosDia
 
   const dateLocale = locale === 'pt' ? pt : fr
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
@@ -178,6 +184,18 @@ export default function Home() {
         setCurrentOperador(getCurrentOperador())
       }}
     />
+  }
+
+  function handleMonthChange(month: string) {
+    setSelectedMonth(month)
+    if (month === 'custom') return
+    const currentMonth = format(new Date(), 'yyyy-MM')
+    if (month === currentMonth) {
+      setSelectedDay(format(new Date(), 'yyyy-MM-dd'))
+    } else {
+      const [year, m] = month.split('-').map(Number)
+      setSelectedDay(format(new Date(year, m - 1, 1), 'yyyy-MM-dd'))
+    }
   }
 
   function handleOperadorChange(operadorId: string) {
@@ -397,39 +415,50 @@ export default function Home() {
           currentOperador={currentOperador}
           operadores={operadores}
           onOperadorChange={handleOperadorChange}
+          onLogout={() => { logout(); setIsLoggedIn(false) }}
           currentPage="home"
         />
 
-        {/* Date Filter */}
+        {/* Date Selectors */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="w-full sm:w-52"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {monthOptions.map(opt => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}
-              <SelectItem value="custom">{t.intervaloPersonalizado}</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.mes}:</Label>
+            <Select value={selectedMonth} onValueChange={handleMonthChange}>
+              <SelectTrigger className="flex-1 sm:w-52"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {monthOptions.map(opt => (<SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>))}
+                <SelectItem value="custom">{t.intervaloPersonalizado}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-          {selectedMonth === 'custom' && (
+          {selectedMonth === 'custom' ? (
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.de}:</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={customDateRange.startDate}
-                  onChange={e => setCustomDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+                  onChange={v => setCustomDateRange(prev => ({ ...prev, startDate: v }))}
                   className="flex-1 sm:w-36 h-9"
                 />
               </div>
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.ate}:</Label>
-                <Input
-                  type="date"
+                <DateInput
                   value={customDateRange.endDate}
-                  onChange={e => setCustomDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+                  onChange={v => setCustomDateRange(prev => ({ ...prev, endDate: v }))}
                   className="flex-1 sm:w-36 h-9"
                 />
               </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground whitespace-nowrap">{t.dia}:</Label>
+              <DateInput
+                value={selectedDay}
+                onChange={setSelectedDay}
+                className="w-36 h-9"
+              />
             </div>
           )}
         </div>
@@ -443,7 +472,10 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               {isLoading ? <Skeleton className="h-8 w-32" /> : (
-                <p className="text-2xl font-bold text-green-500">{totalReceitas.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</p>
+                <>
+                  <p className="text-2xl font-bold text-green-500">{receitasDia.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t.totalMes}: {totalReceitas.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</p>
+                </>
               )}
             </CardContent>
           </Card>
@@ -454,7 +486,10 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               {isLoading ? <Skeleton className="h-8 w-32" /> : (
-                <p className="text-2xl font-bold text-red-500">{totalGastos.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</p>
+                <>
+                  <p className="text-2xl font-bold text-red-500">{gastosDia.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t.totalMes}: {totalGastos.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</p>
+                </>
               )}
             </CardContent>
           </Card>
@@ -465,7 +500,10 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               {isLoading ? <Skeleton className="h-8 w-32" /> : (
-                <p className={`text-2xl font-bold ${saldo >= 0 ? 'text-green-500' : 'text-red-500'}`}>{saldo.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</p>
+                <>
+                  <p className={`text-2xl font-bold ${saldoDia >= 0 ? 'text-green-500' : 'text-red-500'}`}>{saldoDia.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t.totalMes}: {saldo.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}</p>
+                </>
               )}
             </CardContent>
           </Card>
@@ -500,18 +538,16 @@ export default function Home() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>{t.dataInicio}</Label>
-                    <Input
-                      type="date"
+                    <DateInput
                       value={exportDateRange.startDate}
-                      onChange={e => setExportDateRange({ ...exportDateRange, startDate: e.target.value })}
+                      onChange={v => setExportDateRange({ ...exportDateRange, startDate: v })}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>{t.dataFim}</Label>
-                    <Input
-                      type="date"
+                    <DateInput
                       value={exportDateRange.endDate}
-                      onChange={e => setExportDateRange({ ...exportDateRange, endDate: e.target.value })}
+                      onChange={v => setExportDateRange({ ...exportDateRange, endDate: v })}
                     />
                   </div>
                 </div>

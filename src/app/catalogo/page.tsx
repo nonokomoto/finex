@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, Produto, Categoria, Operador } from '@/lib/supabase'
-import { getCurrentOperador, isAuthenticated } from '@/lib/auth'
+import { getCurrentOperador, isAuthenticated, logout } from '@/lib/auth'
 import { Locale, translations, getStoredLocale } from '@/lib/i18n'
 import { Plus, Trash2, Pencil, Search, Package, X, RotateCcw, Loader2, ChevronLeft, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react'
 import { getOperadorColor } from '@/components/operador-badge'
@@ -659,6 +659,7 @@ export default function CatalogoPage() {
                     isDark={isDark}
                     onToggleDark={toggleDarkMode}
                     currentOperador={currentOperador}
+                    onLogout={() => { logout(); router.push('/') }}
                     currentPage="catalogo"
                 />
 

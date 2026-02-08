@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/select'
 import { LanguageSelector } from '@/components/language-selector'
 import { getOperadorColor, getOperadorColors } from '@/components/operador-badge'
-import { logout } from '@/lib/auth'
 import { Locale, translations } from '@/lib/i18n'
 import { Operador } from '@/lib/supabase'
 
@@ -24,6 +23,7 @@ interface AppHeaderProps {
     currentOperador: Operador | null
     operadores?: Operador[]
     onOperadorChange?: (operadorId: string) => void
+    onLogout: () => void
     currentPage?: 'home' | 'catalogo'
 }
 
@@ -35,18 +35,13 @@ export function AppHeader({
     currentOperador,
     operadores = [],
     onOperadorChange,
+    onLogout,
     currentPage = 'home'
 }: AppHeaderProps) {
     const router = useRouter()
     const t = translations[locale]
     const operadorColor = getOperadorColor(currentOperador?.cor)
     const operadorColors = getOperadorColors(currentOperador?.cor)
-
-    function handleLogout() {
-        logout()
-        router.push('/')
-        router.refresh()
-    }
 
     return (
         <div className="flex items-center justify-between gap-2 sm:gap-4">
@@ -139,7 +134,7 @@ export function AppHeader({
                     variant="outline"
                     size="icon"
                     className="h-8 w-8 sm:h-9 sm:w-9"
-                    onClick={handleLogout}
+                    onClick={onLogout}
                     title={t.logout}
                 >
                     <LogOut className="h-4 w-4" />

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Input } from '@/components/ui/input'
+import { CalendarDays } from 'lucide-react'
 
 interface DateInputProps {
   value: string // yyyy-MM-dd
@@ -36,6 +37,7 @@ function autoFormat(raw: string): string {
 export function DateInput({ value, onChange, className }: DateInputProps) {
   const [text, setText] = useState(toDisplay(value))
   const inputRef = useRef<HTMLInputElement>(null)
+  const datePickerRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!inputRef.current || inputRef.current !== document.activeElement) {
@@ -58,17 +60,37 @@ export function DateInput({ value, onChange, className }: DateInputProps) {
     setText(toDisplay(value))
   }
 
+  function handleDatePick(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.value) {
+      onChange(e.target.value)
+      datePickerRef.current?.blur()
+    }
+  }
+
   return (
-    <Input
-      ref={inputRef}
-      type="text"
-      inputMode="numeric"
-      placeholder="dd/mm/aaaa"
-      value={text}
-      onChange={handleChange}
-      onBlur={handleBlur}
-      className={className}
-      maxLength={10}
-    />
+    <div className="relative flex items-center">
+      <Input
+        ref={inputRef}
+        type="text"
+        inputMode="numeric"
+        placeholder="dd/mm/aaaa"
+        value={text}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className={`pr-9 ${className || ''}`}
+        maxLength={10}
+      />
+      <div className="absolute right-0 h-full w-9 flex items-center justify-center">
+        <CalendarDays className="h-4 w-4 text-muted-foreground pointer-events-none" />
+        <input
+          ref={datePickerRef}
+          type="date"
+          value={value}
+          onChange={handleDatePick}
+          className="absolute inset-0 opacity-0 cursor-pointer"
+          tabIndex={-1}
+        />
+      </div>
+    </div>
   )
 }

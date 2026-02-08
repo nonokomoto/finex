@@ -1,15 +1,14 @@
 import { supabase, Operador } from './supabase'
 
 // Password partilhada por todos os operadores
-// Muda anualmente: admin_2026, admin_2027, etc.
-const getSharedPassword = () => `admin_${new Date().getFullYear()}`
+const SHARED_PASSWORD = process.env.NEXT_PUBLIC_APP_PASSWORD || ''
 
 export async function validateCredentials(
   username: string,
   password: string
 ): Promise<Operador | null> {
   // Verificar password partilhada primeiro
-  if (password !== getSharedPassword()) {
+  if (password !== SHARED_PASSWORD) {
     return null
   }
 
